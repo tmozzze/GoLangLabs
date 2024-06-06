@@ -1,0 +1,7 @@
+myfoo(x,y):x+y;
+myfoo2(z):z+1;
+print;
+myvar(i)=21+1;
+myvar2(k)=3
+ccc=myfoo2(myfoo(myvar,myvar2));
+print;
