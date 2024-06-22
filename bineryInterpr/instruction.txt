@@ -1,16 +1,4 @@
 in a
 in b
-in c
-eq d, d;
-and d, c;
-eq d, b;
-eq d, 0;
-eq e, e;
-and e, a;
-eq e, 0;
-and b, c;
-and b, e;
-and a, d;
 eq a, b;
-eq a, 0;
 out a;

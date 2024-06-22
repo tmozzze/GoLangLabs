@@ -9,7 +9,6 @@ import (
 	"unicode"
 )
 
-// priority возвращает приоритет оператора
 func priority(op string) int {
 	switch op {
 	case "+", "-":
@@ -21,12 +20,10 @@ func priority(op string) int {
 	}
 }
 
-// isOperator проверяет, является ли строка оператором
 func isOperator(token string) bool {
 	return token == "+" || token == "-" || token == "*" || token == "/"
 }
 
-// infixToRPN преобразует инфиксное выражение в ОПН
 func infixToRPN(infix string) (string, error) {
 	output := []string{}
 	operators := []string{}
@@ -43,30 +40,30 @@ func infixToRPN(infix string) (string, error) {
 		}
 
 		if isOperator(token) {
-			// Сравниваем приоритеты и перемещаем в `output` все операторы с большим или равным приоритетом
+
 			for len(operators) > 0 && priority(operators[len(operators)-1]) >= priority(token) {
 				output = append(output, operators[len(operators)-1])
 				operators = operators[:len(operators)-1]
 			}
 			operators = append(operators, token)
-			i++ // Переходим к следующему символу
+			i++
 		} else if token == "(" {
-			operators = append(operators, token) // Добавляем открывающую скобку
+			operators = append(operators, token)
 			i++
 		} else if token == ")" {
-			// Переносим все операторы до открывающей скобки в output
+
 			for len(operators) > 0 && operators[len(operators)-1] != "(" {
 				output = append(output, operators[len(operators)-1])
 				operators = operators[:len(operators)-1]
 			}
-			// Удаляем открывающую скобку
+
 			if len(operators) == 0 {
 				return "", fmt.Errorf("mismatched parentheses")
 			}
 			operators = operators[:len(operators)-1]
 			i++
 		} else if unicode.IsDigit(char) {
-			// Собираем число
+
 			start := i
 			for i < len(infix) && (unicode.IsDigit(rune(infix[i])) || infix[i] == '.') {
 				i++
@@ -78,7 +75,6 @@ func infixToRPN(infix string) (string, error) {
 		}
 	}
 
-	// Переносим оставшиеся операторы в `output`
 	for len(operators) > 0 {
 		if operators[len(operators)-1] == "(" {
 			return "", fmt.Errorf("mismatched parentheses")
@@ -91,7 +87,6 @@ func infixToRPN(infix string) (string, error) {
 	return strings.Join(output, " "), nil
 }
 
-// EvaluateRPN принимает строку с уравнением в формате обратной польской нотации и возвращает результат
 func EvaluateRPN(expression string) (float64, error) {
 	stack := []float64{}
 	tokens := strings.Split(expression, " ")

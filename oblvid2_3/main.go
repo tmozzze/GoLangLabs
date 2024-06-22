@@ -11,6 +11,7 @@ import (
 type Interpreter struct {
 	variables map[string]string
 	functions map[string]Function
+	parent    *Interpreter
 }
 
 type Function struct {
@@ -18,10 +19,11 @@ type Function struct {
 	body   string
 }
 
-func NewInterpreter() *Interpreter {
+func NewInterpreter(parent *Interpreter) *Interpreter {
 	return &Interpreter{
 		variables: make(map[string]string),
 		functions: make(map[string]Function),
+		parent:    parent,
 	}
 }
 
@@ -33,51 +35,68 @@ func (interp *Interpreter) Define(name string, params []string, body string) {
 	interp.functions[name] = Function{params, body}
 }
 
-func (interp *Interpreter) Execute(name string, params []string) int {
-	if function, exists := interp.functions[name]; exists {
-		values := function.body
-		parameters := make(map[string]string)
-
-		for i, param := range function.params {
-			parameters[param] = params[i]
-		}
-
-		for param, value := range parameters {
-			values = strings.ReplaceAll(values, param, value)
-		}
-
-		return interp.Calc(interp.PolandNotation(values))
+func (interp *Interpreter) Execute(name string, params []string) (float64, error) {
+	function, exists := interp.functions[name]
+	if !exists {
+		return 0, fmt.Errorf("function %s not defined", name)
 	}
-	return 0
+
+	if len(params) != len(function.params) {
+		return 0, fmt.Errorf("function %s expects %d parameters, got %d", name, len(function.params), len(params))
+	}
+
+	values := function.body
+	parameters := make(map[string]string)
+	for i, param := range function.params {
+		parameters[param] = params[i]
+	}
+
+	for param, value := range parameters {
+		values = strings.ReplaceAll(values, param, value)
+	}
+
+	// Evaluate the expression with substituted parameters
+	result, err := interp.Calc(interp.PolandNotation(values))
+	if err != nil {
+		return 0, err
+	}
+
+	return result, nil
 }
 
 func (interp *Interpreter) PolandNotation(expression string) []string {
 	var result []string
 	var stack []string
+	var token string
 
 	for i := 0; i < len(expression); i++ {
-		if isAlphaNumeric(expression[i]) {
-			var token string
-			for ; i < len(expression) && isAlphaNumeric(expression[i]); i++ {
-				token += string(expression[i])
+		if isAlphaNumeric(expression[i]) || expression[i] == '.' {
+			token += string(expression[i])
+		} else {
+			if token != "" {
+				result = append(result, token)
+				token = ""
 			}
-			result = append(result, token)
-			i--
-		} else if expression[i] == '(' {
-			stack = append(stack, "(")
-		} else if expression[i] == ')' {
-			for stack[len(stack)-1] != "(" {
-				result = append(result, stack[len(stack)-1])
+			if expression[i] == '(' {
+				stack = append(stack, "(")
+			} else if expression[i] == ')' {
+				for stack[len(stack)-1] != "(" {
+					result = append(result, stack[len(stack)-1])
+					stack = stack[:len(stack)-1]
+				}
 				stack = stack[:len(stack)-1]
+			} else if isOperator(expression[i]) {
+				for len(stack) > 0 && precedence(stack[len(stack)-1]) >= precedence(string(expression[i])) {
+					result = append(result, stack[len(stack)-1])
+					stack = stack[:len(stack)-1]
+				}
+				stack = append(stack, string(expression[i]))
 			}
-			stack = stack[:len(stack)-1]
-		} else if isOperator(expression[i]) {
-			for len(stack) > 0 && precedence(stack[len(stack)-1]) >= precedence(string(expression[i])) {
-				result = append(result, stack[len(stack)-1])
-				stack = stack[:len(stack)-1]
-			}
-			stack = append(stack, string(expression[i]))
 		}
+	}
+
+	if token != "" {
+		result = append(result, token)
 	}
 
 	for len(stack) > 0 {
@@ -107,12 +126,15 @@ func precedence(op string) int {
 	}
 }
 
-func (interp *Interpreter) Calc(expression []string) int {
-	var stack []int
+func (interp *Interpreter) Calc(expression []string) (float64, error) {
+	var stack []float64
 	for _, token := range expression {
-		if val, err := strconv.Atoi(token); err == nil {
+		if val, err := strconv.ParseFloat(token, 64); err == nil {
 			stack = append(stack, val)
 		} else {
+			if len(stack) < 2 {
+				return 0, fmt.Errorf("insufficient values in stack for operation %s", token)
+			}
 			b := stack[len(stack)-1]
 			stack = stack[:len(stack)-1]
 			a := stack[len(stack)-1]
@@ -126,17 +148,25 @@ func (interp *Interpreter) Calc(expression []string) int {
 			case "*":
 				stack = append(stack, a*b)
 			case "/":
+				if b == 0 {
+					return 0, fmt.Errorf("division by zero")
+				}
 				stack = append(stack, a/b)
+			default:
+				return 0, fmt.Errorf("invalid operator %s", token)
 			}
 		}
 	}
-	return stack[len(stack)-1]
+	if len(stack) != 1 {
+		return 0, fmt.Errorf("invalid expression")
+	}
+	return stack[0], nil
 }
 
 func (interp *Interpreter) Parse(filename string) error {
 	file, err := os.Open(filename)
 	if err != nil {
-		return fmt.Errorf("No filename provided")
+		return fmt.Errorf("no filename provided")
 	}
 	defer file.Close()
 
@@ -167,9 +197,19 @@ func (interp *Interpreter) Parse(filename string) error {
 						for i, param := range params {
 							params[i] = strings.TrimSpace(param)
 						}
-						interp.variables[key] = strconv.Itoa(interp.Execute(funcName, params))
+						result, err := interp.Execute(funcName, params)
+						if err != nil {
+							fmt.Println("Error:", err)
+						} else {
+							interp.variables[key] = strconv.FormatFloat(result, 'f', -1, 64)
+						}
 					} else if isExpression(value) {
-						interp.variables[key] = strconv.Itoa(interp.Calc(interp.PolandNotation(value)))
+						result, err := interp.Calc(interp.PolandNotation(value))
+						if err != nil {
+							fmt.Println("Error:", err)
+						} else {
+							interp.variables[key] = strconv.FormatFloat(result, 'f', -1, 64)
+						}
 					}
 				}
 				fmt.Println(interp.variables, interp.functions)
@@ -178,7 +218,7 @@ func (interp *Interpreter) Parse(filename string) error {
 	}
 
 	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("Ошибка при чтении файла: %v", err)
+		return fmt.Errorf("ошибка при чтении файла: %v", err)
 	}
 
 	return nil
@@ -189,7 +229,7 @@ func isExpression(value string) bool {
 }
 
 func main() {
-	inter := NewInterpreter()
+	inter := NewInterpreter(nil)
 	err := inter.Parse("instructions.txt")
 	if err != nil {
 		fmt.Println(err)
